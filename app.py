@@ -3,7 +3,6 @@ import google.generativeai as genai
 import os
 import json
 import re
-import traceback
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,33 +14,7 @@ if not api_key:
     raise ValueError("GEMINI_API_KEY not found in environment variables")
 
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel("gemini-2.5-flash")
-
-
-def json_error(message: str, status_code: int = 500, **extra):
-    payload = {"error": message}
-    payload.update(extra)
-    response = jsonify(payload)
-    response.status_code = status_code
-    return response
-
-
-@app.errorhandler(404)
-def not_found(_error):
-    if request.path.startswith("/analyze"):
-        return json_error("Endpoint not found.", 404)
-    return json_error("Page not found.", 404)
-
-
-@app.errorhandler(405)
-def method_not_allowed(_error):
-    return json_error("Method not allowed.", 405)
-
-
-@app.errorhandler(500)
-def internal_error(_error):
-    # Fallback so the frontend does not receive HTML error pages
-    return json_error("Internal server error.", 500)
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 
 def extract_json_object(text: str):
@@ -178,18 +151,12 @@ def sanitize_static_result(result: dict) -> dict:
         actor_name = actor.get("name") or actor_id
         if not actor_id or not actor_name:
             continue
-
-        try:
-            influence = int(actor.get("influence", 5) or 5)
-        except Exception:
-            influence = 5
-
         cleaned_actor = {
             "id": str(actor_id),
             "name": str(actor_name),
             "type": str(actor.get("type", "individual")),
             "description": str(actor.get("description", "")),
-            "influence": max(1, min(10, influence)),
+            "influence": max(1, min(10, int(actor.get("influence", 5) or 5))),
         }
         if "status" in actor:
             cleaned_actor["status"] = str(actor.get("status", "active"))
@@ -203,17 +170,12 @@ def sanitize_static_result(result: dict) -> dict:
         source = rel.get("source")
         target = rel.get("target")
         if source in valid_actor_ids and target in valid_actor_ids and source != target:
-            try:
-                intensity = int(rel.get("intensity", 5) or 5)
-            except Exception:
-                intensity = 5
-
             cleaned_relationships.append({
                 "source": str(source),
                 "target": str(target),
                 "type": str(rel.get("type", "neutral")),
                 "description": str(rel.get("description", "")),
-                "intensity": max(1, min(10, intensity)),
+                "intensity": max(1, min(10, int(rel.get("intensity", 5) or 5))),
             })
 
     return {"actors": cleaned_actors, "relationships": cleaned_relationships}
@@ -226,12 +188,10 @@ def sanitize_timeline_result(result: dict) -> dict:
     for period in timeline:
         if not isinstance(period, dict):
             continue
-
         sanitized_period = sanitize_static_result({
             "actors": period.get("actors", []),
             "relationships": period.get("relationships", []),
         })
-
         cleaned_timeline.append({
             "period": str(period.get("period", "")),
             "year": period.get("year"),
@@ -247,73 +207,50 @@ def sanitize_timeline_result(result: dict) -> dict:
 
 @app.route("/")
 def index():
-    try:
-        return render_template("index.html")
-    except Exception as e:
-        print("\n=== INDEX ERROR ===")
-        traceback.print_exc()
-        print("=== END INDEX ERROR ===\n")
-        return json_error(
-            "Could not load index.html. Make sure it is inside a folder named templates.",
-            500,
-            details=str(e),
-        )
-
-
-@app.route("/health")
-def health():
-    return jsonify({"ok": True})
+    return render_template("index.html")
 
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    include_timeline = bool(data.get("include_timeline", False))
+
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
+
+    prompt = build_timeline_prompt(text) if include_timeline else build_static_prompt(text)
+
     try:
-        data = request.get_json(silent=True)
-        if data is None:
-            return json_error(
-                "Request body was not valid JSON. Make sure the frontend sends application/json.",
-                400,
-            )
-
-        text = (data.get("text") or "").strip()
-        include_timeline = bool(data.get("include_timeline", False))
-
-        if not text:
-            return json_error("No text provided", 400)
-
-        prompt = build_timeline_prompt(text) if include_timeline else build_static_prompt(text)
-
         response = model.generate_content(prompt)
         response_text = (getattr(response, "text", "") or "").strip()
 
-        print("\n=== RAW GEMINI RESPONSE START ===")
+        print("\\n=== RAW GEMINI RESPONSE START ===")
         print(response_text[:3000] if response_text else "[EMPTY RESPONSE]")
-        print("=== RAW GEMINI RESPONSE END ===\n")
+        print("=== RAW GEMINI RESPONSE END ===\\n")
 
         parsed = extract_json_object(response_text)
         result = sanitize_timeline_result(parsed) if include_timeline else sanitize_static_result(parsed)
 
         if include_timeline and not result.get("timeline"):
-            return json_error(
-                "Gemini response was parsed, but no timeline data was found.",
-                500,
-                raw_response=response_text[:1200],
-            )
+            return jsonify({
+                "error": "Gemini response was parsed, but no timeline data was found.",
+                "raw_response": response_text[:1200]
+            }), 500
 
         if not include_timeline and not result.get("actors"):
-            return json_error(
-                "Gemini response was parsed, but no actor data was found.",
-                500,
-                raw_response=response_text[:1200],
-            )
+            return jsonify({
+                "error": "Gemini response was parsed, but no actor data was found.",
+                "raw_response": response_text[:1200]
+            }), 500
 
         return jsonify(result)
 
     except Exception as e:
-        print("\n=== ANALYZE ERROR ===")
-        traceback.print_exc()
-        print("=== END ANALYZE ERROR ===\n")
-        return json_error(str(e), 500)
+        print("\\n=== ANALYZE ERROR ===")
+        print(str(e))
+        print("=== END ANALYZE ERROR ===\\n")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
