@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conflict Analysis Platform</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #1d4ed8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg-main: #050816;
+            --bg-card: #111827;
+            --bg-input: #0b1220;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --text-tertiary: #94a3b8;
+            --border: #23314d;
+            --shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+            --shadow-xl: 0 24px 60px rgba(0, 0, 0, 0.45);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 28%),
+                radial-gradient(circle at top right, rgba(16, 185, 129, 0.08), transparent 22%),
+                linear-gradient(180deg, #050816 0%, #07101d 100%);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .header {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            background: rgba(5, 8, 22, 0.72);
+            backdrop-filter: blur(14px);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .header-content {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 1.25rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .logo { display: flex; align-items: center; gap: 0.9rem; }
+
+        .logo-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            background: linear-gradient(135deg, var(--primary) 0%, #2563eb 60%, #0ea5e9 100%);
+            box-shadow: 0 12px 30px rgba(37, 99, 235, 0.3);
+        }
+
+        .logo-text h1 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--text-primary);
+        }
+
+        .logo-text p { font-size: 0.87rem; color: var(--text-tertiary); }
+
+        .header-badge {
+            padding: 0.5rem 0.9rem;
+            border: 1px solid rgba(59, 130, 246, 0.28);
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 999px;
+            color: #bfdbfe;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .container { max-width: 1600px; margin: 0 auto; padding: 2rem; }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: 420px 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .sidebar, .main-panel { display: flex; flex-direction: column; gap: 1.5rem; }
+
+        .card, .visualization-card, .legend-card {
+            background: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(10, 16, 30, 0.98));
+            border: 1px solid rgba(148, 163, 184, 0.12);
+            border-radius: 18px;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+
+        .card-header { margin-bottom: 1.25rem; }
+        .card-title, .legend-title, .viz-title { color: var(--text-primary); font-weight: 700; letter-spacing: -0.02em; }
+        .card-title { font-size: 1.02rem; margin-bottom: 0.25rem; }
+        .card-description, .legend-text, .timeline-info { color: var(--text-secondary); }
+
+        textarea {
+            width: 100%;
+            min-height: 220px;
+            padding: 1rem;
+            background: var(--bg-input);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            font-size: 0.92rem;
+            font-family: inherit;
+            resize: vertical;
+            transition: all 0.2s ease;
+        }
+
+        textarea::placeholder { color: #64748b; }
+        textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12); }
+
+        .mode-selector { display: flex; gap: 0.8rem; margin: 1.15rem 0 1.2rem; }
+
+        .mode-option {
+            flex: 1;
+            position: relative;
+            padding: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.02);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            overflow: hidden;
+        }
+
+        .mode-option input { position: absolute; opacity: 0; pointer-events: none; }
+        .mode-option:hover { border-color: #3b82f6; background: rgba(59, 130, 246, 0.08); transform: translateY(-1px); }
+        .mode-option.selected { border-color: rgba(59, 130, 246, 0.7); background: linear-gradient(180deg, rgba(59, 130, 246, 0.14), rgba(59, 130, 246, 0.06)); }
+        .mode-label { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.2rem; display: flex; align-items: center; gap: 0.45rem; }
+        .mode-description { font-size: 0.78rem; color: var(--text-tertiary); }
+
+        .btn-row { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+        .btn-primary, .btn-secondary, .play-btn, .icon-btn { border: none; cursor: pointer; transition: all 0.2s ease; font-family: inherit; font-weight: 600; }
+
+        .btn-primary {
+            width: 100%;
+            padding: 0.95rem 1.25rem;
+            color: white;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            box-shadow: 0 14px 30px rgba(37, 99, 235, 0.28);
+            font-size: 0.95rem;
+        }
+
+        .btn-primary:hover { transform: translateY(-1px); }
+        .btn-primary:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
+
+        .export-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+        .btn-secondary, .icon-btn {
+            padding: 0.82rem 1rem;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover, .icon-btn:hover {
+            background: rgba(59, 130, 246, 0.08);
+            border-color: rgba(59, 130, 246, 0.35);
+            color: var(--text-primary);
+            transform: translateY(-1px);
+        }
+
+        .example-link {
+            display: inline-block;
+            margin-top: 0.85rem;
+            font-size: 0.88rem;
+            color: #93c5fd;
+            cursor: pointer;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .example-link:hover { text-decoration: underline; }
+        .filter-section, .controls-section { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+        .filter-title { font-size: 0.9rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1rem; }
+        .filter-group { display: flex; flex-direction: column; gap: 0.78rem; }
+        .checkbox-label { display: flex; align-items: center; gap: 0.7rem; cursor: pointer; font-size: 0.88rem; color: var(--text-secondary); }
+        .checkbox-label input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer; }
+        .control-item { margin-bottom: 1.25rem; }
+        .control-label { display: flex; justify-content: space-between; margin-bottom: 0.55rem; font-size: 0.88rem; color: var(--text-secondary); font-weight: 500; }
+        .control-value { color: #93c5fd; font-weight: 700; }
+
+        .slider, .timeline-slider {
+            width: 100%;
+            height: 7px;
+            border-radius: 999px;
+            background: #1f2b45;
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb, .timeline-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            border: 2px solid #dbeafe;
+            box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+        }
+
+        .visualization-card { min-height: 760px; }
+        .viz-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
+        .viz-title { font-size: 1.1rem; }
+        .viz-controls { display: flex; gap: 0.7rem; flex-wrap: wrap; }
+
+        .timeline-section {
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(9, 14, 28, 0.95));
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 1.25rem;
+            margin-bottom: 1.25rem;
+            display: none;
+        }
+
+        .timeline-section.active { display: block; }
+        .timeline-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.8rem; }
+        .timeline-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+        .timeline-slider-container { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.7rem; }
+        .timeline-label { font-weight: 700; color: #93c5fd; min-width: 140px; text-align: center; font-size: 0.95rem; }
+
+        .play-btn {
+            padding: 0.72rem 1.1rem;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            border-radius: 10px;
+        }
+
+        .play-btn.playing { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .timeline-markers { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.74rem; color: var(--text-tertiary); margin-top: 0.45rem; flex-wrap: wrap; }
+
+        .timeline-events {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            border-left: 3px solid var(--primary);
+        }
+
+        .timeline-events h4 { font-size: 0.88rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.7rem; }
+        .timeline-events ul { list-style: none; }
+        .timeline-events li { padding: 0.34rem 0; color: var(--text-secondary); font-size: 0.88rem; }
+        .timeline-events li:before { content: "•"; color: #93c5fd; font-weight: bold; margin-right: 0.55rem; }
+
+        #graph {
+            width: 100%;
+            height: 560px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            background:
+                radial-gradient(circle at top, rgba(59, 130, 246, 0.06), transparent 35%),
+                linear-gradient(180deg, #08111f 0%, #091221 100%);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .legend-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.8rem; margin-bottom: 1rem; }
+        .legend-item { display: flex; align-items: center; gap: 0.65rem; }
+        .legend-color { width: 18px; height: 18px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.08); }
+        .legend-note, .subtle-note { font-size: 0.82rem; color: var(--text-tertiary); line-height: 1.55; }
+        .influence-legend { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+        .influence-scale { display: flex; flex-wrap: wrap; align-items: center; gap: 0.85rem; margin-top: 0.75rem; }
+        .influence-example { display: flex; align-items: center; gap: 0.55rem; font-size: 0.82rem; color: var(--text-secondary); }
+
+        .example-node {
+            border-radius: 50%;
+            background: var(--primary);
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.18);
+        }
+
+        .node-tooltip {
+            position: absolute;
+            padding: 0.85rem 1rem;
+            background: rgba(15, 23, 42, 0.97);
+            color: white;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 12px;
+            font-size: 0.82rem;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 1000;
+            max-width: 300px;
+            box-shadow: var(--shadow-xl);
+        }
+
+        .loading-state { text-align: center; padding: 4rem 2rem; color: var(--text-secondary); }
+
+        .loading-spinner {
+            width: 42px;
+            height: 42px;
+            border: 4px solid rgba(255, 255, 255, 0.08);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        .error-state {
+            background: rgba(127, 29, 29, 0.22);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fecaca;
+            padding: 1rem;
+            border-radius: 12px;
+            margin-top: 1rem;
+            font-size: 0.88rem;
+        }
+
+        .success-state {
+            background: rgba(6, 95, 70, 0.18);
+            border: 1px solid rgba(16, 185, 129, 0.28);
+            color: #a7f3d0;
+            padding: 0.9rem 1rem;
+            border-radius: 12px;
+            margin-top: 1rem;
+            font-size: 0.88rem;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 1200px) {
+            .workspace { grid-template-columns: 1fr; }
+            .legend-grid { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 760px) {
+            .container, .header-content { padding-left: 1rem; padding-right: 1rem; }
+            .mode-selector, .export-row { grid-template-columns: 1fr; display: grid; }
+            .viz-header, .timeline-header { flex-direction: column; align-items: stretch; }
+            .timeline-slider-container { flex-direction: column; align-items: stretch; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon">🗺️</div>
+                <div class="logo-text">
+                    <h1>Conflict Analysis Platform</h1>
+                    <p>AI-powered actor and relationship mapping</p>
+                </div>
+            </div>
+            <div class="header-badge">Export-ready visual analysis</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="workspace">
+            <div class="sidebar">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Source Text</h2>
+                        <p class="card-description">Paste conflict-related content to generate an actor map with influence and relationship analysis.</p>
+                    </div>
+
+                    <div class="input-area">
+                        <textarea id="inputText" placeholder="Enter or paste text about a conflict, including actors, relationships, and their levels of influence..."></textarea>
+                    </div>
+
+                    <div class="mode-selector">
+                        <label class="mode-option selected" onclick="selectMode('static', event)">
+                            <input type="radio" name="mode" value="static" checked>
+                            <div class="mode-label"><span>📊</span> Static</div>
+                            <div class="mode-description">Current state analysis</div>
+                        </label>
+
+                        <label class="mode-option" onclick="selectMode('timeline', event)">
+                            <input type="radio" name="mode" value="timeline">
+                            <div class="mode-label"><span>📈</span> Timeline</div>
+                            <div class="mode-description">Historical evolution</div>
+                        </label>
+                    </div>
+
+                    <div class="btn-row">
+                        <button id="analyzeBtn" class="btn-primary" onclick="analyzeText()">Analyze Conflict</button>
+                        <div class="export-row">
+                            <button class="btn-secondary" onclick="exportVisual('png')">Export PNG</button>
+                            <button class="btn-secondary" onclick="exportVisual('pdf')">Export PDF</button>
+                        </div>
+                    </div>
+
+                    <a class="example-link" onclick="loadExample()">Load example ↗</a>
+                    <div id="errorMsg"></div>
+                </div>
+
+                <div class="card">
+                    <div class="filter-section" style="margin-top:0; padding-top:0; border-top:none;">
+                        <h3 class="filter-title">Relationship Filters</h3>
+                        <div class="filter-group">
+                            <label class="checkbox-label"><input type="checkbox" class="filter-checkbox" value="allied" checked><span>Allied / Supportive</span></label>
+                            <label class="checkbox-label"><input type="checkbox" class="filter-checkbox" value="hostile" checked><span>Hostile / Opposition</span></label>
+                            <label class="checkbox-label"><input type="checkbox" class="filter-checkbox" value="neutral" checked><span>Neutral</span></label>
+                            <label class="checkbox-label"><input type="checkbox" class="filter-checkbox" value="economic" checked><span>Economic</span></label>
+                            <label class="checkbox-label"><input type="checkbox" class="filter-checkbox" value="diplomatic" checked><span>Diplomatic</span></label>
+                        </div>
+                    </div>
+
+                    <div class="controls-section">
+                        <h3 class="filter-title">Layout Controls</h3>
+
+                        <div class="control-item">
+                            <div class="control-label"><span>Node Spacing</span><span class="control-value" id="chargeValue">-300</span></div>
+                            <input type="range" class="slider" id="chargeSlider" min="-1000" max="-100" value="-300" step="50">
+                        </div>
+
+                        <div class="control-item">
+                            <div class="control-label"><span>Link Distance</span><span class="control-value" id="distanceValue">150</span></div>
+                            <input type="range" class="slider" id="distanceSlider" min="50" max="300" value="150" step="25">
+                        </div>
+
+                        <p class="subtle-note">Exports now include a drawn legend, title block, filters, and improved label readability.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="main-panel">
+                <div class="visualization-card">
+                    <div class="viz-header">
+                        <h2 class="viz-title">Network Visualization</h2>
+                        <div class="viz-controls">
+                            <button class="icon-btn" onclick="resetSimulation()">🔄 Reset</button>
+                            <button class="icon-btn" onclick="centerView()">📍 Center</button>
+                        </div>
+                    </div>
+
+                    <div class="timeline-section" id="timelineContainer">
+                        <div class="timeline-header">
+                            <div><div class="timeline-title" id="timelineTitle">Timeline Analysis</div></div>
+                            <button class="play-btn" id="playButton" onclick="togglePlayback()">▶ Play</button>
+                        </div>
+                        <div class="timeline-info" id="timelineDescription"></div>
+                        <div class="timeline-slider-container">
+                            <input type="range" class="timeline-slider" id="timelineSlider" min="0" max="0" value="0" step="1">
+                            <div class="timeline-label" id="timelineLabel">-</div>
+                        </div>
+                        <div class="timeline-markers" id="timelineMarkers"></div>
+                        <div class="timeline-events" id="timelineEvents"></div>
+                    </div>
+
+                    <div id="graph"></div>
+                </div>
+
+                <div class="legend-card">
+                    <h3 class="legend-title">Legend</h3>
+                    <div class="legend-grid">
+                        <div class="legend-item"><div class="legend-color" style="background: #10b981;"></div><span class="legend-text">Allied</span></div>
+                        <div class="legend-item"><div class="legend-color" style="background: #ef4444;"></div><span class="legend-text">Hostile</span></div>
+                        <div class="legend-item"><div class="legend-color" style="background: #94a3b8;"></div><span class="legend-text">Neutral</span></div>
+                        <div class="legend-item"><div class="legend-color" style="background: #f59e0b;"></div><span class="legend-text">Economic</span></div>
+                        <div class="legend-item"><div class="legend-color" style="background: #3b82f6;"></div><span class="legend-text">Diplomatic</span></div>
+                    </div>
+
+                    <div class="influence-legend">
+                        <h4 class="filter-title">Actor Influence</h4>
+                        <p class="legend-text" style="margin-bottom: 0.75rem;">Node size reflects influence level on a 1-10 scale.</p>
+                        <div class="influence-scale">
+                            <div class="influence-example"><div class="example-node" style="width: 12px; height: 12px;"></div><span>Minor (1-3)</span></div>
+                            <div class="influence-example"><div class="example-node" style="width: 20px; height: 20px;"></div><span>Moderate (4-6)</span></div>
+                            <div class="influence-example"><div class="example-node" style="width: 28px; height: 28px;"></div><span>Major (7-8)</span></div>
+                            <div class="influence-example"><div class="example-node" style="width: 36px; height: 36px;"></div><span>Dominant (9-10)</span></div>
+                        </div>
+                    </div>
+
+                    <p class="legend-note" style="margin-top:1rem;"><strong>Interaction:</strong> Drag nodes to reposition, scroll to zoom, hover for details, and export your finished map as a clear PNG or PDF.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="node-tooltip" id="tooltip"></div>
+
+    <script>
+        let currentData = null;
+        let timelineData = null;
+        let simulation = null;
+        let svg = null;
+        let link = null;
+        let node = null;
+        let isPlaying = false;
+        let playbackInterval = null;
+        let currentPeriodIndex = 0;
+
+        const RELATIONSHIP_COLORS = {
+            allied: '#10b981',
+            hostile: '#ef4444',
+            neutral: '#94a3b8',
+            economic: '#f59e0b',
+            diplomatic: '#3b82f6'
+        };
+
+        const ACTOR_COLORS = {
+            government: '#2563eb',
+            militia: '#dc2626',
+            ngo: '#16a34a',
+            ethnic_group: '#ea580c',
+            individual: '#9333ea',
+            other: '#64748b'
+        };
+
+        function selectMode(mode, event) {
+            document.querySelectorAll('.mode-option').forEach(opt => opt.classList.remove('selected'));
+            if (event && event.currentTarget) event.currentTarget.classList.add('selected');
+            document.querySelector(`input[value="${mode}"]`).checked = true;
+        }
+
+        function loadExample() {
+            document.getElementById('inputText').value = `The Syrian conflict involves multiple actors with varying degrees of influence.
+
+The Syrian Government, led by President Bashar al-Assad, maintains dominant control over state institutions and military forces, representing the highest level of influence (9/10) in regime-controlled areas. Russia provides crucial military support to the Syrian Government, wielding major influence (8/10) through air power and diplomatic backing at the UN.
+
+Iran exercises significant influence (7/10) through military advisors, funding, and support for allied militias. Hezbollah, backed by Iran, operates as a major militia force (6/10 influence) fighting alongside government forces.
+
+Opposition forces are fragmented. The Free Syrian Army represents moderate rebels with moderate influence (5/10) in some regions. Turkey supports various opposition groups and maintains major influence (7/10) in northern Syria through direct military presence.
+
+The Kurdish-led Syrian Democratic Forces (SDF) control northeastern Syria with moderate to major influence (6/10) in their territories. The United States provides crucial backing to Kurdish forces, exercising major influence (7/10) through air support and training.
+
+ISIS, once dominant, has been largely defeated but small cells remain with minor influence (2/10). Al-Qaeda-linked groups like Hayat Tahrir al-Sham maintain moderate influence (5/10) in Idlib province.
+
+Humanitarian organizations like the UN and various NGOs have limited influence (3/10) focused on aid delivery rather than political outcomes.`;
+
+            const staticOption = document.querySelector('.mode-option');
+            document.querySelectorAll('.mode-option').forEach(opt => opt.classList.remove('selected'));
+            staticOption.classList.add('selected');
+            document.querySelector('input[value="static"]').checked = true;
+        }
+
+        function getNodeSize(influence) {
+            const inf = influence || 5;
+            return 10 + (inf * 3);
+        }
+
+        function drawLegendOnCanvas(ctx, startX, startY, width, height) {
+            const pad = 24;
+            const x = startX + pad;
+            let y = startY + pad;
+
+            ctx.save();
+            roundRect(ctx, startX, startY, width, height, 20, 'rgba(17, 24, 39, 0.98)', 'rgba(148, 163, 184, 0.12)');
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = '700 24px Inter, Arial';
+            ctx.fillText('Legend', x, y + 8);
+
+            y += 46;
+
+            ctx.fillStyle = '#cbd5e1';
+            ctx.font = '600 18px Inter, Arial';
+            ctx.fillText('Relationships', x, y);
+            y += 22;
+
+            const relEntries = [
+                ['Allied', RELATIONSHIP_COLORS.allied],
+                ['Hostile', RELATIONSHIP_COLORS.hostile],
+                ['Neutral', RELATIONSHIP_COLORS.neutral],
+                ['Economic', RELATIONSHIP_COLORS.economic],
+                ['Diplomatic', RELATIONSHIP_COLORS.diplomatic]
+            ];
+
+            ctx.font = '500 16px Inter, Arial';
+            relEntries.forEach(([label, color]) => {
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, 18, 18);
+                ctx.fillStyle = '#cbd5e1';
+                ctx.fillText(label, x + 30, y + 15);
+                y += 30;
+            });
+
+            y += 10;
+            ctx.fillStyle = '#cbd5e1';
+            ctx.font = '600 18px Inter, Arial';
+            ctx.fillText('Actor Influence', x, y);
+            y += 18;
+
+            ctx.font = '500 16px Inter, Arial';
+            const influenceEntries = [
+                ['Minor (1-3)', 12],
+                ['Moderate (4-6)', 20],
+                ['Major (7-8)', 28],
+                ['Dominant (9-10)', 36]
+            ];
+
+            influenceEntries.forEach(([label, size]) => {
+                ctx.beginPath();
+                ctx.fillStyle = '#3b82f6';
+                ctx.arc(x + 10 + size / 4, y + 14, size / 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+                ctx.stroke();
+                ctx.fillStyle = '#cbd5e1';
+                ctx.fillText(label, x + 42, y + 19);
+                y += 34;
+            });
+
+            y += 8;
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '500 14px Inter, Arial';
+            wrapText(ctx, 'Node size shows influence. Line width shows relationship intensity. Export includes the same graph layout currently visible on screen.', x, y, width - pad * 2, 22);
+
+            ctx.restore();
+        }
+
+        function roundRect(ctx, x, y, width, height, radius, fillStyle, strokeStyle = null) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.arcTo(x + width, y, x + width, y + height, radius);
+            ctx.arcTo(x + width, y + height, x, y + height, radius);
+            ctx.arcTo(x, y + height, x, y, radius);
+            ctx.arcTo(x, y, x + width, y, radius);
+            ctx.closePath();
+            if (fillStyle) {
+                ctx.fillStyle = fillStyle;
+                ctx.fill();
+            }
+            if (strokeStyle) {
+                ctx.strokeStyle = strokeStyle;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+        }
+
+        function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(' ');
+            let line = '';
+            for (let n = 0; n < words.length; n++) {
+                const testLine = line + words[n] + ' ';
+                const metrics = ctx.measureText(testLine);
+                if (metrics.width > maxWidth && n > 0) {
+                    ctx.fillText(line, x, y);
+                    line = words[n] + ' ';
+                    y += lineHeight;
+                } else {
+                    line = testLine;
+                }
+            }
+            ctx.fillText(line, x, y);
+        }
+
+        async function exportVisual(format) {
+            const svgElement = document.querySelector('#graph svg');
+            if (!svgElement) {
+                document.getElementById('errorMsg').innerHTML = '<div class="error-state">Run an analysis first, then export the visual as PNG or PDF.</div>';
+                return;
+            }
+
+            try {
+                const graphEl = document.getElementById('graph');
+                const graphWidth = graphEl.clientWidth || 1200;
+                const graphHeight = graphEl.clientHeight || 560;
+                const legendWidth = 380;
+                const headerHeight = 110;
+                const padding = 28;
+                const exportWidth = graphWidth + legendWidth + (padding * 3);
+                const exportHeight = graphHeight + headerHeight + (padding * 2);
+
+                const clonedSvg = svgElement.cloneNode(true);
+                clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                clonedSvg.setAttribute('width', graphWidth);
+                clonedSvg.setAttribute('height', graphHeight);
+                if (!clonedSvg.getAttribute('viewBox')) {
+                    clonedSvg.setAttribute('viewBox', `0 0 ${graphWidth} ${graphHeight}`);
+                }
+
+                const serializer = new XMLSerializer();
+                const svgString = serializer.serializeToString(clonedSvg);
+                const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+                const url = URL.createObjectURL(svgBlob);
+
+                const img = new Image();
+                img.onload = function () {
+                    const scale = 2.5;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.round(exportWidth * scale);
+                    canvas.height = Math.round(exportHeight * scale);
+                    const ctx = canvas.getContext('2d');
+
+                    ctx.scale(scale, scale);
+
+                    const bgGradient = ctx.createLinearGradient(0, 0, 0, exportHeight);
+                    bgGradient.addColorStop(0, '#050816');
+                    bgGradient.addColorStop(1, '#07101d');
+                    ctx.fillStyle = bgGradient;
+                    ctx.fillRect(0, 0, exportWidth, exportHeight);
+
+                    const titleX = padding;
+                    const titleY = padding + 22;
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.font = '800 28px Inter, Arial';
+                    ctx.fillText('Conflict Analysis Platform', titleX, titleY);
+
+                    ctx.fillStyle = '#93c5fd';
+                    ctx.font = '600 16px Inter, Arial';
+                    const mode = document.querySelector('input[name="mode"]:checked').value === 'timeline' ? 'Timeline mode' : 'Static mode';
+                    ctx.fillText(`AI-powered actor and relationship mapping • ${mode}`, titleX, titleY + 28);
+
+                    if (timelineData && currentPeriodIndex >= 0 && timelineData.timeline[currentPeriodIndex]) {
+                        const p = timelineData.timeline[currentPeriodIndex];
+                        ctx.fillStyle = '#cbd5e1';
+                        ctx.font = '500 15px Inter, Arial';
+                        ctx.fillText(`Current period: ${p.period}${p.label ? ' • ' + p.label : ''}`, titleX, titleY + 54);
+                    }
+
+                    const graphCardX = padding;
+                    const graphCardY = headerHeight;
+                    roundRect(ctx, graphCardX, graphCardY, graphWidth + 24, graphHeight + 24, 22, 'rgba(17, 24, 39, 0.98)', 'rgba(148, 163, 184, 0.12)');
+
+                    const graphInnerX = graphCardX + 12;
+                    const graphInnerY = graphCardY + 12;
+
+                    ctx.fillStyle = '#091221';
+                    roundRect(ctx, graphInnerX, graphInnerY, graphWidth, graphHeight, 16, '#091221');
+                    ctx.drawImage(img, graphInnerX, graphInnerY, graphWidth, graphHeight);
+
+                    const legendX = graphCardX + graphWidth + 24 + padding;
+                    const legendY = headerHeight;
+                    drawLegendOnCanvas(ctx, legendX, legendY, legendWidth, graphHeight + 24);
+
+                    if (format === 'png') {
+                        const linkEl = document.createElement('a');
+                        linkEl.download = 'conflict_network.png';
+                        linkEl.href = canvas.toDataURL('image/png');
+                        linkEl.click();
+                    } else if (format === 'pdf') {
+                        const { jsPDF } = window.jspdf;
+                        const pdf = new jsPDF({
+                            orientation: exportWidth >= exportHeight ? 'landscape' : 'portrait',
+                            unit: 'pt',
+                            format: [exportWidth, exportHeight]
+                        });
+                        const imgData = canvas.toDataURL('image/png');
+                        pdf.addImage(imgData, 'PNG', 0, 0, exportWidth, exportHeight);
+                        pdf.save('conflict_network.pdf');
+                    }
+
+                    URL.revokeObjectURL(url);
+                };
+
+                img.onerror = function () {
+                    URL.revokeObjectURL(url);
+                    document.getElementById('errorMsg').innerHTML = '<div class="error-state">Export failed while rendering the graph image.</div>';
+                };
+
+                img.src = url;
+            } catch (error) {
+                document.getElementById('errorMsg').innerHTML = `<div class="error-state">Export error: ${error.message}</div>`;
+            }
+        }
+
+        async function analyzeText() {
+            const text = document.getElementById('inputText').value;
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const btn = document.getElementById('analyzeBtn');
+            const errorMsg = document.getElementById('errorMsg');
+
+            if (!text.trim()) {
+                errorMsg.innerHTML = '<div class="error-state">Please enter text to analyze.</div>';
+                return;
+            }
+
+            errorMsg.innerHTML = '';
+            btn.disabled = true;
+            btn.textContent = 'Analyzing...';
+
+            document.getElementById('graph').innerHTML = `
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p>AI is analyzing the conflict...</p>
+                    <p style="font-size: 0.82rem; color: var(--text-tertiary); margin-top: 0.5rem;">
+                        This may take ${mode === 'timeline' ? '20-30' : '10-20'} seconds
+                    </p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text, include_timeline: mode === 'timeline' })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Analysis failed');
+                }
+
+                if (mode === 'timeline' && data.timeline) {
+                    timelineData = data;
+                    currentData = null;
+                    setupTimeline(data.timeline);
+                    showPeriod(0);
+                } else {
+                    currentData = data;
+                    timelineData = null;
+                    stopPlayback();
+                    document.getElementById('timelineContainer').classList.remove('active');
+                    visualizeConflict(data);
+                }
+
+                errorMsg.innerHTML = '<div class="success-state">Analysis complete. You can now export the current visual as PNG or PDF.</div>';
+            } catch (error) {
+                errorMsg.innerHTML = `<div class="error-state">Error: ${error.message}</div>`;
+                document.getElementById('graph').innerHTML = '';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Analyze Conflict';
+            }
+        }
+
+        function setupTimeline(timeline) {
+            const container = document.getElementById('timelineContainer');
+            const slider = document.getElementById('timelineSlider');
+            const markers = document.getElementById('timelineMarkers');
+
+            container.classList.add('active');
+            slider.max = timeline.length - 1;
+            slider.value = 0;
+            currentPeriodIndex = 0;
+            markers.innerHTML = timeline.map(p => `<span>${p.period}</span>`).join('');
+            slider.oninput = (e) => showPeriod(parseInt(e.target.value));
+        }
+
+        function showPeriod(index) {
+            if (!timelineData || !timelineData.timeline) return;
+
+            const period = timelineData.timeline[index];
+            currentPeriodIndex = index;
+
+            document.getElementById('timelineLabel').textContent = period.period;
+            document.getElementById('timelineDescription').textContent = period.description || '';
+            document.getElementById('timelineSlider').value = index;
+
+            const eventsContainer = document.getElementById('timelineEvents');
+            if (period.events && period.events.length > 0) {
+                eventsContainer.innerHTML = `
+                    <h4>Key Events</h4>
+                    <ul>${period.events.map(e => `<li>${e}</li>`).join('')}</ul>
+                `;
+            } else {
+                eventsContainer.innerHTML = '';
+            }
+
+            visualizeConflict({ actors: period.actors, relationships: period.relationships });
+        }
+
+        function togglePlayback() {
+            if (isPlaying) stopPlayback(); else startPlayback();
+        }
+
+        function startPlayback() {
+            if (!timelineData) return;
+            isPlaying = true;
+            const button = document.getElementById('playButton');
+            button.textContent = '⏸ Pause';
+            button.classList.add('playing');
+
+            playbackInterval = setInterval(() => {
+                currentPeriodIndex++;
+                if (currentPeriodIndex >= timelineData.timeline.length) currentPeriodIndex = 0;
+                showPeriod(currentPeriodIndex);
+            }, 3000);
+        }
+
+        function stopPlayback() {
+            isPlaying = false;
+            const button = document.getElementById('playButton');
+            button.textContent = '▶ Play';
+            button.classList.remove('playing');
+            if (playbackInterval) {
+                clearInterval(playbackInterval);
+                playbackInterval = null;
+            }
+        }
+
+        function resetSimulation() {
+            if (simulation) simulation.alpha(1).restart();
+        }
+
+        function centerView() {
+            if (timelineData && currentPeriodIndex >= 0) showPeriod(currentPeriodIndex);
+            else if (currentData) visualizeConflict(currentData);
+        }
+
+        function drawTextHalo(selection) {
+            selection
+                .attr('fill', '#f8fafc')
+                .attr('stroke', 'rgba(2, 6, 23, 0.98)')
+                .attr('stroke-width', 4)
+                .attr('paint-order', 'stroke')
+                .attr('stroke-linejoin', 'round')
+                .style('font-weight', 800);
+        }
+
+        function visualizeConflict(data) {
+            const width = document.getElementById('graph').offsetWidth;
+            const height = 560;
+            d3.select('#graph').html('');
+
+            const activeFilters = Array.from(document.querySelectorAll('.filter-checkbox:checked')).map(cb => cb.value);
+            const filteredRelationships = (data.relationships || []).filter(r => activeFilters.includes(r.type));
+
+            svg = d3.select('#graph').append('svg').attr('width', width).attr('height', height);
+            const g = svg.append('g');
+
+            const zoom = d3.zoom().scaleExtent([0.3, 3]).on('zoom', (event) => g.attr('transform', event.transform));
+            svg.call(zoom);
+
+            const defs = svg.append('defs');
+            Object.entries(RELATIONSHIP_COLORS).forEach(([type, color]) => {
+                defs.append('marker')
+                    .attr('id', `arrow-${type}`)
+                    .attr('viewBox', '0 -5 10 10')
+                    .attr('refX', 30)
+                    .attr('refY', 0)
+                    .attr('markerWidth', 6)
+                    .attr('markerHeight', 6)
+                    .attr('orient', 'auto')
+                    .append('path')
+                    .attr('d', 'M0,-5L10,0L0,5')
+                    .attr('fill', color);
+            });
+
+            const chargeStrength = parseFloat(document.getElementById('chargeSlider').value);
+            const linkDistance = parseFloat(document.getElementById('distanceSlider').value);
+
+            simulation = d3.forceSimulation(data.actors || [])
+                .force('link', d3.forceLink(filteredRelationships).id(d => d.id).distance(linkDistance))
+                .force('charge', d3.forceManyBody().strength(chargeStrength))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(d => getNodeSize(d.influence) + 16))
+                .force('x', d3.forceX(width / 2).strength(0.05))
+                .force('y', d3.forceY(height / 2).strength(0.05));
+
+            link = g.append('g')
+                .selectAll('line')
+                .data(filteredRelationships)
+                .enter()
+                .append('line')
+                .attr('stroke', d => RELATIONSHIP_COLORS[d.type] || '#999')
+                .attr('stroke-width', d => Math.max(1.8, (d.intensity / 10) * 4.4))
+                .attr('stroke-opacity', 0.78)
+                .attr('marker-end', d => `url(#arrow-${d.type})`);
+
+            node = g.append('g')
+                .selectAll('g')
+                .data(data.actors || [])
+                .enter()
+                .append('g')
+                .call(d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended));
+
+            node.append('circle')
+                .attr('r', d => getNodeSize(d.influence))
+                .attr('fill', d => ACTOR_COLORS[d.type] || ACTOR_COLORS.other)
+                .attr('stroke', d => {
+                    if (d.status === 'emerged') return '#10b981';
+                    if (d.status === 'weakened') return '#f59e0b';
+                    if (d.status === 'dissolved') return '#ef4444';
+                    return '#e2e8f0';
+                })
+                .attr('stroke-width', d => d.status ? 3 : 2.5)
+                .style('cursor', 'pointer')
+                .style('opacity', 0.95)
+                .style('filter', 'drop-shadow(0 10px 18px rgba(0, 0, 0, 0.25))');
+
+            const labels = node.append('text')
+                .attr('dx', d => getNodeSize(d.influence) + 10)
+                .attr('dy', 5)
+                .text(d => d.name)
+                .style('font-size', d => `${11 + (d.influence || 5) * 0.35}px`)
+                .style('letter-spacing', '0.01em');
+
+            drawTextHalo(labels);
+
+            const tooltip = d3.select('#tooltip');
+
+            node.on('mouseover', function(event, d) {
+                d3.select(this).select('circle')
+                    .transition().duration(180)
+                    .attr('r', getNodeSize(d.influence) * 1.22)
+                    .style('opacity', 1);
+
+                let statusBadge = '';
+                if (d.status) {
+                    const statusLabels = { emerged: 'NEW', weakened: 'WEAKENED', dissolved: 'DISSOLVED', active: 'ACTIVE' };
+                    statusBadge = `<span class="status-badge status-${d.status}">${statusLabels[d.status]}</span>`;
+                }
+
+                const influenceLevel = d.influence || 5;
+                const influenceLabels = { 1: 'Minimal', 2: 'Minor', 3: 'Minor', 4: 'Moderate', 5: 'Moderate', 6: 'Moderate', 7: 'Major', 8: 'Major', 9: 'Dominant', 10: 'Dominant' };
+
+                tooltip.style('opacity', 1)
+                    .html(`
+                        <strong>${d.name}</strong>${statusBadge}
+                        <br><span style="opacity:0.75">Type:</span> ${d.type}
+                        <br><span style="opacity:0.75">Influence:</span> ${influenceLabels[influenceLevel]} (${influenceLevel}/10)
+                        <br><span style="opacity:0.75">${d.description || ''}</span>
+                    `)
+                    .style('left', (event.pageX + 12) + 'px')
+                    .style('top', (event.pageY - 12) + 'px');
+            }).on('mouseout', function(event, d) {
+                d3.select(this).select('circle')
+                    .transition().duration(180)
+                    .attr('r', getNodeSize(d.influence))
+                    .style('opacity', 0.95);
+                tooltip.style('opacity', 0);
+            });
+
+            simulation.on('tick', () => {
+                link.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+                node.attr('transform', d => `translate(${d.x},${d.y})`);
+            });
+
+            function dragstarted(event) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                event.subject.fx = event.subject.x;
+                event.subject.fy = event.subject.y;
+            }
+
+            function dragged(event) {
+                event.subject.fx = event.x;
+                event.subject.fy = event.y;
+            }
+
+            function dragended(event) {
+                if (!event.active) simulation.alphaTarget(0);
+                event.subject.fx = null;
+                event.subject.fy = null;
+            }
+        }
+
+        document.querySelectorAll('.filter-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                if (timelineData && currentPeriodIndex >= 0) showPeriod(currentPeriodIndex);
+                else if (currentData) visualizeConflict(currentData);
+            });
+        });
+
+        document.getElementById('chargeSlider').addEventListener('input', (e) => {
+            document.getElementById('chargeValue').textContent = e.target.value;
+            if (simulation) {
+                simulation.force('charge').strength(parseFloat(e.target.value));
+                simulation.alpha(0.3).restart();
+            }
+        });
+
+        document.getElementById('distanceSlider').addEventListener('input', (e) => {
+            document.getElementById('distanceValue').textContent = e.target.value;
+            if (simulation) {
+                simulation.force('link').distance(parseFloat(e.target.value));
+                simulation.alpha(0.3).restart();
+            }
+        });
+    </script>
+</body>
+</html>
